@@ -93,3 +93,52 @@ def track_ang_vel_z_world_exp(
     asset = env.scene[asset_cfg.name]
     ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - asset.data.root_ang_vel_w[:, 2])
     return torch.exp(-ang_vel_error / std**2)
+
+
+def base_height_l2(env: ManagerBasedRLEnv, target_height: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Reward for maintaining a target base height."""
+    asset = env.scene[asset_cfg.name]
+    height_error = torch.square(asset.data.root_pos_w[:, 2] - target_height)
+    return -height_error
+
+
+def alternating_contacts(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, threshold: float) -> torch.Tensor:
+    """Reward for alternating foot contacts (encourages walking gait)."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    contacts = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :].norm(dim=-1).max(dim=1)[0] > threshold
+    
+    # Check if exactly one foot is in contact (alternating gait)
+    num_contacts = torch.sum(contacts.int(), dim=1)
+    alternating_reward = (num_contacts == 1).float()
+    
+    return alternating_reward
+
+
+def forward_progress(env: ManagerBasedRLEnv, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Reward for forward progress based on command."""
+    asset = env.scene[asset_cfg.name]
+    command = env.command_manager.get_command(command_name)
+    
+    # Get forward velocity in robot frame
+    vel_yaw = quat_rotate_inverse(yaw_quat(asset.data.root_quat_w), asset.data.root_lin_vel_w[:, :3])
+    
+    # Reward forward velocity when commanded
+    forward_vel = vel_yaw[:, 0]  # x-axis in robot frame
+    forward_command = command[:, 0]  # x-axis command
+    
+    # Only reward when there's a forward command
+    reward = forward_vel * (forward_command > 0.1).float()
+    
+    return reward
+
+
+def both_feet_contact(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, threshold: float) -> torch.Tensor:
+    """Reward for keeping both feet in contact with the ground (encourages standing)."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    contacts = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :].norm(dim=-1).max(dim=1)[0] > threshold
+    
+    # Check if both feet are in contact (stable standing)
+    num_contacts = torch.sum(contacts.int(), dim=1)
+    both_feet_reward = (num_contacts == 2).float()
+    
+    return both_feet_reward
