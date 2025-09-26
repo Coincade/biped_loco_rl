@@ -10,8 +10,14 @@ Policy runner for the servo-based biped.
 from typing import Union
 from abc import ABC, abstractmethod
 import numpy as np
-import torch
-import onnxruntime as ort
+try:
+    import torch
+except ImportError:
+    torch = None
+try:
+    import onnxruntime as ort
+except ImportError:
+    ort = None
 
 
 class Policy(ABC):
@@ -70,7 +76,7 @@ class RlController:
         cfg: OmegaConf config (contains keys used below)
     """
 
-    def __init__(self, cfg: Union[dict, "DictConfig"]):
+    def __init__(self, cfg: Union[dict, object]):
         self.cfg = cfg
         self.policy = None
         # sizes
@@ -110,39 +116,35 @@ class RlController:
                                expected shape (obs_dim,) where obs_dim matches cfg.num_observations
 
         Returns:
-            actions (np.ndarray) shape (num_actions,) — joint angles in radians
+            actions (np.ndarray) shape (num_actions,) — normalized joint positions [-1, 1]
         """
-        # print(f"In update Loop, Robot observations: {robot_observations}")
         if self.policy is None:
             raise RuntimeError("Policy not loaded. Call load_policy() first.")
 
-        # shift history and append newest observation (flatten behavior)
-        # flatten input obs
+        # Flatten input observations
         obs_flat = robot_observations.astype(np.float32).reshape(-1)
         
         # Check if observation dimensions match
         if len(obs_flat) != self.num_observations:
             raise ValueError(f"Observation dimension mismatch: expected {self.num_observations}, got {len(obs_flat)}")
         
-        # shift left by num_observations and append
+        # Shift history and append newest observation
         prev = self.policy_observations[0, self.num_observations:]
         new_buf = np.concatenate([prev, obs_flat], axis=0)
         self.policy_observations[0, :] = new_buf
 
-        # run network
+        # Run policy network
         out = self.policy.forward(self.policy_observations)
-        # ensure length
         out = np.asarray(out).reshape(self.num_actions)
 
-        # clip to policy action limits (these are relative network outputs)
+        # Clip to policy action limits
         clipped = np.clip(out, self.action_limit_lower, self.action_limit_upper)
 
-        # remember previous actions (for history if needed)
+        # Remember previous actions for history
         self.prev_actions[:] = clipped
 
-        # scale and add default joint positions
-        # assume network outputs are normalized to approximately [-1, 1] unless configured
+        # Scale actions and add default joint positions (Berkeley approach)
+        # This gives us normalized joint positions [-1, 1]
         actions = clipped * self.action_scale + self.default_joint_positions
-        # print(f"In update Loop, Actions: {actions}")
 
         return actions

@@ -1,5 +1,5 @@
 # robot.py
-# Robot class managing 10 servo motors for the biped
+# Simplified robot class for servo control (based on Berkeley Humanoid Lite approach)
 
 import numpy as np
 import yaml
@@ -28,89 +28,116 @@ class BipedLoco:
             print("3. Check permissions:")
             print("   - Run: sudo usermod -a -G dialout $USER")
             print("   - Then logout and login again")
-            print("4. Check if port is in use:")
-            print("   - Run: lsof /dev/ttyACM0")
-            print("5. Try different port if available")
-            raise RuntimeError(f"Cannot connect to robot hardware: {e}")
+            print("4. Check if another process is using the port")
+            print("   - Run: lsof | grep {}".format(port))
+            raise RuntimeError(f"Hardware connection failed: {e}")
 
-        # Define 10 joints with unique IDs
+        # Define joint mapping (servo_id: joint_name)
         self.joints = {
             1: "left_hip_pitch_joint",
-            2: "left_hip_roll_joint",
+            2: "left_hip_roll_joint", 
             3: "left_knee_roll_joint",
             4: "left_ankle_roll_joint",
             5: "left_foot_joint",
             6: "right_hip_pitch_joint",
             7: "right_hip_roll_joint",
-            8: "right_knee_roll_joint",
+            8: "right_knee_roll_joint", 
             9: "right_ankle_roll_joint",
-            10: "right_foot_joint",
+            10: "right_foot_joint"
         }
-
+        
         self.num_joints = len(self.joints)
-
-        # Initialize joint state arrays
-        self.joint_targets = np.zeros(self.num_joints, dtype=np.float32)
-        self.joint_positions = np.zeros(self.num_joints, dtype=np.float32)
-
-        self.state = State.IDLE
-        self.next_state = State.IDLE
-
-        # Load initial positions from policy config file
+        
+        # Initialize state - start in init mode to go to initial position
+        self.state = State.RL_INIT
+        self.next_state = State.RL_INIT
+        
+        # Load initial positions from policy config
         self.rl_init_positions = self._load_initial_positions(config_path)
+        
+        # Initialize position tracking (in servo units)
+        self.joint_positions = np.zeros(self.num_joints, dtype=np.float32)
+        self.joint_targets = np.zeros(self.num_joints, dtype=np.float32)
         
         # Initialize observation components
         self.prev_actions = np.zeros(self.num_joints, dtype=np.float32)
         self.joint_velocities = np.zeros(self.num_joints, dtype=np.float32)
         self.prev_joint_positions = np.zeros(self.num_joints, dtype=np.float32)
-    
+        
+        print(f"Robot initialized with {self.num_joints} joints")
+
     def _load_initial_positions(self, config_path):
         """
         Load initial joint positions from policy config file.
-        Converts from normalized coordinates (-1 to +1) to servo units (0-4096).
+        Convert from normalized coordinates to servo units.
         """
         try:
             with open(config_path, 'r') as file:
                 config = yaml.safe_load(file)
             
-            # Get normalized joint positions from config
+            # Get normalized joint positions from config (in radians)
             normalized_positions = config.get('default_joint_positions', [])
             
             if len(normalized_positions) != self.num_joints:
                 print(f"Warning: Expected {self.num_joints} joint positions, got {len(normalized_positions)}")
-                print("Using default neutral positions (2048)")
-                return np.array([2048] * self.num_joints, dtype=np.float32)
+                print("Using default neutral positions (2048 servo units)")
+                return np.array([2048] * self.num_joints, dtype=np.int32)
             
-            # Convert from normalized (-1 to +1) to servo units (0-4096)
-            # Formula: servo_unit = (normalized * 2048) + 2048
-            scale = 4096 / (2 * 3.1416)
-            servo_positions = np.array([
-                (pos * scale) + 2048 for pos in normalized_positions
-            ], dtype=np.float32)
+            # Convert normalized positions to servo units
+            servo_positions = self._normalized_to_servo_units(normalized_positions)
             
             print(f"Loaded initial positions from {config_path}:")
             for i, (joint_name, pos) in enumerate(zip(self.joints.values(), servo_positions)):
-                print(f"  {joint_name}: {pos:.1f} (normalized: {normalized_positions[i]:.3f})")
+                print(f"  {joint_name}: {pos} servo units (normalized: {normalized_positions[i]:.3f})")
             
             return servo_positions
             
         except Exception as e:
             print(f"Warning: Could not load initial positions from {config_path}: {e}")
-            print("Using default neutral positions (2048)")
-            return np.array([2048] * self.num_joints, dtype=np.float32)
+            print("Using default neutral positions (2048 servo units)")
+            return np.array([2048] * self.num_joints, dtype=np.int32)
+
+    def _normalized_to_servo_units(self, normalized_positions):
+        """
+        Convert normalized positions [-1, 1] to servo units [0, 4096].
+        This is a simplified conversion - you may need to calibrate for your specific servos.
+        """
+        servo_units = []
+        for pos in normalized_positions:
+            # Convert from [-1, 1] to [0, 4096]
+            # Assuming ±1.0 normalized = ±π/2 radians = ±90 degrees
+            servo_unit = int((pos + 1.0) * 2048)  # Maps [-1,1] to [0,4096]
+            servo_unit = np.clip(servo_unit, 0, 4096)
+            servo_units.append(servo_unit)
+        return np.array(servo_units, dtype=np.int32)
+
+    def _servo_units_to_normalized(self, servo_units):
+        """
+        Convert servo units [0, 4096] to normalized positions [-1, 1].
+        """
+        normalized = (servo_units - 2048) / 2048.0
+        return np.clip(normalized, -1.0, 1.0)
 
     def reset(self):
         """
         Reset robot to initial positions from policy config.
         """
         print("Moving robot to initial positions from policy config...")
-        for i, servo_id in enumerate(self.joints.keys()):
-            pos = int(self.rl_init_positions[i])
-            self.driver.move_servo(servo_id, pos)
-            read_pos = self.driver.read_position(servo_id)
-            print(f" Read pose: {list(self.joints.values())[i]}: {read_pos}")
-            print(f"  {list(self.joints.values())[i]}: {pos}")
         
+        # Move servos to initial positions
+        for i, servo_id in enumerate(self.joints.keys()):
+            servo_pos = self.rl_init_positions[i]
+            self.driver.move_servo(servo_id, servo_pos)
+            
+            # Read actual position for verification
+            read_pos = self.driver.read_position(servo_id)
+            if read_pos is not None:
+                self.joint_positions[i] = read_pos
+                print(f"  {list(self.joints.values())[i]}: {servo_pos} (read: {read_pos})")
+            else:
+                print(f"  {list(self.joints.values())[i]}: {servo_pos} (read failed)")
+        
+        # Store targets in servo units
         self.joint_targets[:] = self.rl_init_positions
         
         # Return full observation space (39 dimensions)
@@ -119,25 +146,29 @@ class BipedLoco:
     def step(self, actions: np.ndarray):
         """
         Apply RL actions to the servos.
-        actions: np.ndarray of shape (num_joints,)
+        actions: np.ndarray of shape (num_joints,) in normalized coordinates [-1, 1]
         """
         assert actions.shape[0] == self.num_joints, "Action size mismatch!"
 
-        self.joint_targets[:] = actions
+        # Convert normalized actions to servo units
+        servo_positions = self._normalized_to_servo_units(actions)
+        
+        # Store targets in servo units
+        self.joint_targets[:] = servo_positions
 
-        print(f"Applying RL actions to hardware: {actions}")
+        print(f"Applying RL actions to hardware (normalized): {actions}")
+        print(f"Servo positions: {servo_positions}")
+        
+        # Send commands to servos
         for i, servo_id in enumerate(self.joints.keys()):
-            pos = int(self.joint_targets[i])
-            self.driver.move_servo(servo_id, pos)
-            read_pos = self.driver.read_position(servo_id)
-            print(f" Read pose: {list(self.joints.values())[i]}: {read_pos}")
-            print(f"  {list(self.joints.values())[i]}: {pos}")
+            servo_pos = servo_positions[i]
+            self.driver.move_servo(servo_id, servo_pos)
 
         # Update measured positions
         for i, servo_id in enumerate(self.joints.keys()):
-            pos = self.driver.read_position(servo_id)
-            if pos is not None:
-                self.joint_positions[i] = pos
+            servo_pos = self.driver.read_position(servo_id)
+            if servo_pos is not None:
+                self.joint_positions[i] = servo_pos
             else:
                 print(f"Warning: Could not read position from servo {servo_id}")
 
@@ -148,29 +179,32 @@ class BipedLoco:
         """
         Hold current joint positions (for idle mode).
         """
+        # Send current targets to servos
         for i, servo_id in enumerate(self.joints.keys()):
-            pos = int(self.joint_positions[i])
-            self.driver.move_servo(servo_id, pos)
+            servo_pos = int(self.joint_targets[i])
+            self.driver.move_servo(servo_id, servo_pos)
 
     def stop(self):
         """
         Stop robot safely (hold current positions).
         """
         for i, servo_id in enumerate(self.joints.keys()):
-            self.driver.move_servo(servo_id, int(self.joint_positions[i]))
+            servo_pos = int(self.joint_positions[i])
+            self.driver.move_servo(servo_id, servo_pos)
     
     def _get_full_observations(self):
         """
         Construct the full 39-dimensional observation space expected by the policy.
-        
-        Returns:
-            np.ndarray: 39-dimensional observation vector
+        Uses normalized coordinates like Berkeley approach.
         """
         # Calculate joint velocities (simple finite difference)
         joint_vel = self.joint_positions - self.prev_joint_positions
         
         # Update previous positions for next iteration
         self.prev_joint_positions[:] = self.joint_positions
+        
+        # Convert servo positions to normalized coordinates
+        normalized_joint_pos = self._servo_units_to_normalized(self.joint_positions)
         
         # Construct observation vector (39 dimensions total)
         obs = np.zeros(39, dtype=np.float32)
@@ -185,20 +219,17 @@ class BipedLoco:
         obs[6:9] = [0.0, 0.0, -1.0]
         
         # 4. joint_pos (10D) - current joint positions (normalized)
-        # Convert from servo units (0-4096) to normalized range (-1, 1)
-        normalized_joint_pos = (self.joint_positions - 2048) / 2048.0
         obs[9:19] = normalized_joint_pos
         
-        # 5. joint_vel (10D) - joint velocities
-        obs[19:29] = joint_vel / 100.0  # Scale down velocities
+        # 5. joint_vel (10D) - joint velocities (normalized)
+        # Convert velocity from servo units to normalized
+        normalized_vel = joint_vel / 2048.0  # Scale by half range
+        obs[19:29] = normalized_vel
         
-        # 6. actions (10D) - previous actions
+        # 6. actions (10D) - previous actions (normalized)
         obs[29:39] = self.prev_actions
         
         # Update previous actions for next iteration
         self.prev_actions[:] = normalized_joint_pos
-        
-        # Debug: Print observation info (uncomment for debugging)
-        # print(f"Observation shape: {obs.shape}, Joint positions: {self.joint_positions}")
         
         return obs

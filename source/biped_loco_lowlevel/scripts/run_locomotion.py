@@ -1,8 +1,8 @@
-# core.py
-# Main RL control loop for the biped
+# run_locomotion.py
+# Main RL control loop for servo-based biped (simplified for servo control)
 
 from loop_rate_limiters import RateLimiter
-from biped_loco_lowlevel.robot import BipedLoco
+from biped_loco_lowlevel.robot import BipedLoco, State
 from biped_loco_lowlevel.policy.rl_controller import RlController
 from biped_loco_lowlevel.policy.config import Cfg
 from biped_loco_lowlevel.policy.gamepad import Se2Gamepad
@@ -36,12 +36,16 @@ def main():
     controller.load_policy()
     print("RL policy loaded")
 
-    rate = RateLimiter(1 / cfg.policy_dt)
+    # Set control rate based on policy frequency
+    policy_freq = 1.0 / cfg.policy_dt
+    rate = RateLimiter(policy_freq)
+    print(f"Policy frequency: {policy_freq:.1f} Hz")
     
     # Initialize observation
     obs = robot.reset()
 
-    print("\nWaiting for gamepad input...")
+    print("\nRobot will automatically go to initial position...")
+    print("Waiting for gamepad input...")
     print("Press A + Right Bumper to start RL control")
 
     try:
@@ -50,22 +54,28 @@ def main():
             mode = gamepad.commands.get("mode_switch", 0)
             
             if mode == 3:  # RL control mode
-                # Apply RL policy actions
+                # Apply RL policy actions (returns normalized positions [-1, 1])
                 actions = controller.update(obs)
                 obs = robot.step(actions)
                 rate.sleep()
             elif mode == 2:  # Init mode
-                # Reset robot to neutral position
-                print("Resetting robot to neutral position...")
+                # Reset robot to initial positions from policy
+                print("Resetting robot to initial positions...")
                 obs = robot.reset()
                 time.sleep(0.1)  # Small delay
             elif mode == 1:  # Idle mode
                 # Hold current position
                 robot.hold_position()
                 time.sleep(0.01)  # Small delay
-            else:  # No mode selected
-                # Hold current position
-                robot.hold_position()
+            else:  # No mode selected (default to init mode on startup)
+                # On first run, go to initial position, then hold
+                if robot.state == State.RL_INIT:
+                    print("Going to initial position...")
+                    obs = robot.reset()
+                    robot.state = State.IDLE  # Switch to idle after init
+                else:
+                    # Hold current position
+                    robot.hold_position()
                 time.sleep(0.01)  # Small delay
                 
     except KeyboardInterrupt:
