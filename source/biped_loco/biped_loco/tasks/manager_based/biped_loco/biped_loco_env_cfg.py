@@ -78,9 +78,9 @@ class CommandsCfg:
         rel_standing_envs=0.02,
         rel_heading_envs=1.0,
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-0.5, 0.5),
-            lin_vel_y=(-0.25, 0.25),
-            ang_vel_z=(-1.0, 1.0),
+            lin_vel_x=(-0.3, 0.3),  # Moderate forward/backward movement for walking
+            lin_vel_y=(-0.15, 0.15),  # Moderate side-to-side movement
+            ang_vel_z=(-0.8, 0.8),  # Moderate rotation
             heading=(-math.pi, math.pi),
         ),
     )
@@ -98,7 +98,7 @@ class ActionsCfg:
     joint_pos = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=BIPED_LOCO_JOINTS,
-        scale=0.25,
+        scale=0.1,
         preserve_order=True,
         use_default_offset=True,
     )
@@ -202,14 +202,14 @@ class EventsCfg:
     reset_base = EventTerm(
         func=mdp.reset_root_state_uniform,
         params={
-            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
+            "pose_range": {"x": (-0.2, 0.2), "y": (-0.2, 0.2), "yaw": (-0.5, 0.5)},  # Smaller reset range
             "velocity_range": {
-                "x": (-0.5, 0.5),
-                "y": (-0.5, 0.5),
+                "x": (-0.1, 0.1),  # Much smaller initial velocities
+                "y": (-0.1, 0.1),
                 "z": (0.0, 0.0),
-                "roll": (-0.5, 0.5),
-                "pitch": (-0.5, 0.5),
-                "yaw": (-0.5, 0.5),
+                "roll": (-0.1, 0.1),  # Much smaller initial angular velocities
+                "pitch": (-0.1, 0.1),
+                "yaw": (-0.1, 0.1),
             },
         },
         mode="reset",
@@ -218,7 +218,7 @@ class EventsCfg:
         func=mdp.reset_joints_by_scale,
         mode="reset",
         params={
-            "position_range": (0.5, 1.5),
+            "position_range": (0.8, 1.2),  # Closer to default positions
             "velocity_range": (0.0, 0.0),
         },
     )
@@ -226,10 +226,8 @@ class EventsCfg:
         func=mdp.apply_external_force_torque,
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names="base_link"),
-            "force_range": (-2.0, 2.0),
-            "torque_range": (-2.0, 2.0),
-            # "force_range": (-3.0, 3.0),
-            # "torque_range": (-3.0, 3.0),
+            "force_range": (-0.5, 0.5),  # Much smaller disturbances
+            "torque_range": (-0.5, 0.5),  # Much smaller disturbances
         },
         mode="reset",
     )
@@ -252,7 +250,7 @@ class RewardsCfg:
     track_lin_vel_xy_exp = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,
         params={"command_name": "base_velocity", "std": 0.25},
-        weight=2.0,
+        weight=10.0,
     )
     track_ang_vel_z_exp = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
@@ -337,8 +335,8 @@ class RewardsCfg:
     # Note: This robot doesn't have hip yaw joints, so this reward term is not applicable
     joint_deviation_ankle_roll = RewTerm(
         func=mdp.joint_deviation_l1,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_roll_joint"])},
-        weight=-0.2,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_foot_joint"])},
+        weight=-0.5,
     )
 
 

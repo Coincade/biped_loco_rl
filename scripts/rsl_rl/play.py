@@ -59,6 +59,7 @@ import time
 import torch
 
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
+from omegaconf import OmegaConf
 
 from isaaclab.envs import (
     DirectMARLEnv,
@@ -70,6 +71,7 @@ from isaaclab.envs import (
 from isaaclab.utils.assets import retrieve_file_path
 from isaaclab.utils.dict import print_dict
 from isaaclab.utils.pretrained_checkpoint import get_published_pretrained_checkpoint
+import isaaclab.utils.string as string_utils
 
 from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper, export_policy_as_jit, export_policy_as_onnx
 
@@ -171,6 +173,79 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
     export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt")
     export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
+
+    # === export the yaml config for deployment ===
+    num_joints = len(env_cfg.scene.robot.init_state.joint_pos)
+
+    # we take the joint order defined from the init joint state entry
+    joint_names = [name for name in env_cfg.scene.robot.init_state.joint_pos.keys()]
+    init_joint_pos = [v for v in env_cfg.scene.robot.init_state.joint_pos.values()]
+
+    joint_kp = torch.zeros(num_joints, device=env.unwrapped.device)
+    joint_kd = torch.zeros(num_joints, device=env.unwrapped.device)
+    effort_limits = torch.zeros(num_joints, device=env.unwrapped.device)
+    
+    # extract the configurations from the actuator groups
+    for group in env_cfg.scene.robot.actuators.values():
+        # string util method expects a dict
+        match_expr_list = [expr for expr in group.joint_names_expr]
+        match_expr_dict = {expr: None for expr in match_expr_list}
+
+        indicies, _, _ = string_utils.resolve_matching_names_values(match_expr_dict, joint_names, preserve_order=True)
+        joint_kp[indicies] = group.stiffness
+        joint_kd[indicies] = group.damping
+        effort_limits[indicies] = group.effort_limit
+
+    # extract the indices of the actuated joints
+    match_expr_list = {expr: None for expr in env_cfg.actions.joint_pos.joint_names}
+    action_indices, _, _ = string_utils.resolve_matching_names_values(match_expr_list, joint_names, preserve_order=True)
+
+    deploy_config = {
+        # === Policy configurations ===
+        "policy_checkpoint_path": f"{export_model_dir}/policy.onnx",
+
+        # === Networking configurations ===
+        "ip_robot_addr": "127.0.0.1",
+        "ip_policy_obs_port": 10000,
+        "ip_host_addr": "127.0.0.1",
+        "ip_policy_acs_port": 10001,
+
+        # === Physics configurations ===
+        "control_dt": 0.004,   # 250 Hz
+        "policy_dt": env_cfg.sim.dt * env_cfg.decimation,      # 25 Hz
+        "physics_dt": 0.0005,    # 2000 Hz
+        "cutoff_freq": 1000,
+
+        # === Articulation configurations ===
+        "num_joints": num_joints,
+        "joints": joint_names,
+        "joint_kp": joint_kp.tolist(),
+        "joint_kd": joint_kd.tolist(),
+        "effort_limits": effort_limits.tolist(),
+        "default_base_position": env_cfg.scene.robot.init_state.pos,
+        "default_joint_positions": init_joint_pos,
+
+        # === Observation configurations ===
+        "num_observations": env.observation_space["policy"].shape[-1],
+        "history_length": env_cfg.observations.policy.actions.history_length,
+
+        # === Command configurations ===
+        # sample a command
+        "command_velocity": env_cfg.observations.policy.velocity_commands.func(
+            env.unwrapped, env_cfg.observations.policy.velocity_commands.params["command_name"]
+            )[0].tolist(),
+
+        # === Action configurations ===
+        "num_actions": env.action_space.shape[-1],
+        "action_scale": env_cfg.actions.joint_pos.scale,
+        "action_indices": action_indices,
+        "action_limit_lower": -10000,
+        "action_limit_upper": 10000,
+    }
+    if not os.path.exists("configs"):
+        os.makedirs("configs")
+    OmegaConf.save(deploy_config, "configs/policy_latest.yaml")
+    print(f"[INFO] Exported deployment configuration to: configs/policy_latest.yaml")
 
     dt = env.unwrapped.step_dt
 
