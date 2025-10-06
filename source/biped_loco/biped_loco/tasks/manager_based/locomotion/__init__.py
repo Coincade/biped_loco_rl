@@ -3,8 +3,8 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Import manager-based tasks
-from . import locomotion
+# Import locomotion tasks
+from . import velocity
 
 # Make them available at package level
-__all__ = ["locomotion"]
+__all__ = ["velocity"]
