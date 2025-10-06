@@ -3,8 +3,4 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Import manager-based tasks
-from . import locomotion
-
-# Make them available at package level
-__all__ = ["locomotion"]
+# Empty init file for agents package

@@ -1,10 +1,10 @@
-policy_checkpoint_path: /home/yash/projects/robotics/biped_loco/logs/rsl_rl/cartpole_direct/2025-09-26_09-40-16/exported/policy.onnx
+policy_checkpoint_path: /home/yash/projects/robotics/biped_loco/logs/rsl_rl/biped_loco_flat/2025-10-01_09-24-47/exported/policy.onnx
 ip_robot_addr: 127.0.0.1
 ip_policy_obs_port: 10000
 ip_host_addr: 127.0.0.1
 ip_policy_acs_port: 10001
 control_dt: 0.004
-policy_dt: 0.016666666666666666
+policy_dt: 0.02
 physics_dt: 0.0005
 cutoff_freq: 1000
 num_joints: 10
@@ -55,7 +55,7 @@ effort_limits:
 default_base_position:
 - 0.0
 - 0.0
-- 0.0
+- 0.5
 default_joint_positions:
 - 0.0
 - -0.35
@@ -67,14 +67,14 @@ default_joint_positions:
 - 0.96
 - 0.61
 - 0.0
-num_observations: 39
+num_observations: 42
 history_length: 0
 command_velocity:
-- -0.07161089032888412
-- -0.08409951627254486
-- -0.3855946958065033
+- 0.314847469329834
+- -0.2745179533958435
+- -0.2832790017127991
 num_actions: 10
-action_scale: 0.1
+action_scale: 0.5
 action_indices:
 - 0
 - 1

@@ -15,3 +15,6 @@ from isaaclab_tasks.utils import import_packages
 _BLACKLIST_PKGS = ["utils", ".mdp"]
 # Import all configs in this package
 import_packages(__name__, _BLACKLIST_PKGS)
+
+# Explicitly import biped_loco config to register environments
+from .manager_based.locomotion.velocity.config import biped_loco  # noqa: F401
