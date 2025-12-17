@@ -1,0 +1,41 @@
+{
+    "position_controller": {
+        "gear_ratio": -15.0,
+        "position_kp": 0.0,
+        "position_ki": 0.0,
+        "velocity_kp": 0.0,
+        "velocity_ki": 0.0,
+        "torque_limit": 4.0,
+        "velocity_limit": 20.0,
+        "position_limit_upper": 3.1500000953674316,
+        "position_limit_lower": -3.1500000953674316,
+        "position_offset": 0.0,
+        "torque_filter_alpha": 0.14536400139331818
+    },
+    "current_controller": {
+        "i_limit": 0.009999999776482582,
+        "i_kp": 20.0,
+        "i_ki": 0.5340707302093506
+    },
+    "powerstage": {
+        "undervoltage_threshold": 3.4499968191676996e-42,
+        "overvoltage_threshold": 0.0,
+        "bus_voltage_filter_alpha": 0.0
+    },
+    "motor": {
+        "pole_pairs": 1100919116,
+        "torque_constant": 1.961817850054744e-44,
+        "phase_order": 1039194181,
+        "max_calibration_current": 1.401298464324817e-45
+    },
+    "encoder": {
+        "cpr": 0,
+        "position_offset": 5.739718509874451e-42,
+        "velocity_filter_alpha": 0.0,
+        "flux_offset": 6.981954214779762e-08
+    },
+    "device_id": 11,
+    "firmware_version": "0x20250226",
+    "watchdog_timeout": 1000,
+    "fast_frame_frequency": 0
+}
