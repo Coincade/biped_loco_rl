@@ -21,9 +21,9 @@ _motor_configs_lock = threading.Lock()
 # Based on bimanual configuration: can0 = left arm, can1 = right arm
 DEFAULT_MOTOR_BUS_MAPPING = {
     # can0 (left arm)
-    1: "can1", 3: "can1", 5: "can1", 7: "can1", 9: "can1",
+    1: "can0", 3: "can0", 5: "can0", 7: "can0", 9: "can0",
     # can1 (right arm)
-    2: "can0", 4: "can0", 6: "can0", 8: "can0", 10: "can0",
+    2: "can1", 4: "can1", 6: "can1", 8: "can1", 10: "can1",
 }
 
 

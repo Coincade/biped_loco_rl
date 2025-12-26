@@ -12,8 +12,8 @@ bus = recoil.Bus(channel=args.channel, bitrate=1000000)
 
 device_id = args.id
 
-kp = 0
-kd = 0
+kp = 20
+kd = 4
 
 # kp = 50.0
 # kd = 2.0
@@ -25,7 +25,7 @@ rate = RateLimiter(frequency=200.0)
 
 bus.write_position_kp(device_id, kp)
 bus.write_position_kd(device_id, kd)
-bus.write_torque_limit(device_id, 6.0)
+bus.write_torque_limit(device_id, 4.0)
 bus.write_gear_ratio(device_id, -15.0)
 bus.write_torque_target(device_id, 0.0)
 bus.write_position_limit_upper(device_id, np.inf)

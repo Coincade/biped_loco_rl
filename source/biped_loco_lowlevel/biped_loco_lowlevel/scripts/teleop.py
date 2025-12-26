@@ -41,8 +41,11 @@ import berkeley_humanoid_lite_lowlevel.recoil as recoil
 # We've already parsed our arguments, so we don't need to restore sys.argv
 
 # Motor IDs: 2, 4, 6, 8, 10 for both servo (leader) and humanoid (follower) motors
-SERVO_MOTOR_IDS = [2, 4, 6, 8, 10]
-HUMANOID_MOTOR_IDS = [2, 4, 6, 8, 10]
+# SERVO_MOTOR_IDS = [2, 4, 6, 8, 10]
+# HUMANOID_MOTOR_IDS = [2, 4, 6, 8, 10]
+# Motor IDs: 2, 4, 6, 8, 10 for both servo (leader) and humanoid (follower) motors
+SERVO_MOTOR_IDS = [1, 3, 5, 7, 9]
+HUMANOID_MOTOR_IDS = [1, 3, 5, 7, 9]
 
 
 def servo_units_to_rad(servo_units):
@@ -105,7 +108,11 @@ def initialize_humanoid_motor(bus, motor_id):
             kp = 50.0
             kd = 2.0
             torque_limit = 6.0
-        elif motor_id == 7 or motor_id == 8:
+        elif motor_id == 7:
+            kp = 20.0
+            kd = 5.0
+            torque_limit = 3.0
+        elif motor_id == 8:
             kp = 20.0
             kd = 5.0
             torque_limit = 2.5
